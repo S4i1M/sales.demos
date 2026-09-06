@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- Windows clone sysprep answer file never applied (#234)
+- Renamed the Secret key from `autounattend.xml` to `Unattend.xml` in
+  `terraform/ocpvirt/main.tf`. After sysprep, Windows mini-setup searches for
+  `Unattend.xml` on removable media — not `Autounattend.xml` (which is only
+  searched during a fresh install from media). Two bugs stacked: the producer
+  cached its own answer file in `%WINDIR%\Panther` (fixed by
+  `image.builder.pipeline` PR #71), and the consumer named the file wrong. With
+  the cache gone, the filename mismatch became the remaining failure.
+- Shortened the Windows `ComputerName` to ≤15 characters (`sd-win-sm-1c-2g`,
+  `sd-win-md-1c-4g`, `sd-win-lg-2c-6g`) via a `tier_windows_hostname` map in
+  `locals.tf`. The full VM name (`sd-win-small-1cpu-2gb`, 21 chars) exceeded
+  the Windows NetBIOS limit and caused the specialize pass to reject the answer
+  file outright.
+- `quay_windows_image` updated to `20260906-0300`, built with the producer fix.
+
+  **Diagnostic trail — three stacked bugs, each masking the next:**
+  1. Producer cached its answer file in `%WINDIR%\Panther` (precedence 3),
+     preventing Windows from ever reaching the consumer's CD (precedence 5).
+     Fixed by `image.builder.pipeline` PR #71.
+  2. With the cache gone, Windows still stopped at the OOBE region screen
+     (![screenshot](docs/images/win234-oobe-region-screen-wrong-filename.png))
+     because the Secret key was `autounattend.xml` — the fresh-install name.
+     After sysprep, Windows searches for `Unattend.xml`.
+  3. With the key renamed, Windows found the file on `D:\` for the first time
+     and rejected it: *"The answer file is invalid"* for the specialize pass
+     (![screenshot](docs/images/win234-specialize-invalid-computername.png)).
+     The `ComputerName` exceeded the 15-character NetBIOS limit.
+
+  **Proven end-to-end:** clone reaches the Windows lock screen with no manual
+  intervention
+  (![screenshot](docs/images/win234-clone-reaches-desktop.png)).
+
+  **Lesson: do not kill the virt-launcher pod mid-OOBE.** Deleting the pod to
+  force a Secret refresh corrupted the OOBE state on the root disk
+  (![screenshot](docs/images/win234-corrupted-oobe-from-pod-kill.png)),
+  requiring a full destroy-and-reprovision. Restart the VM via the OpenShift
+  console or wait for the `provision_vm.yml` playbook to converge.
+
 ### Changed -- single copy-paste SSH command in Check VMs output (#218)
 - The Check VMs job output now shows one command an SE can paste directly into
   a terminal: `virtctl ssh --kubeconfig ~/.kube/<env>.kubeconfig -o
