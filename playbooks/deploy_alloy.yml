@@ -56,11 +56,15 @@
     alloy_cpu_limit: "500m"
     alloy_memory_limit: "512Mi"
 
-    # Thanos Querier federation endpoint.
-    alloy_thanos_url: "https://thanos-querier.openshift-monitoring.svc:9091"
+    # Prometheus federation endpoint. Uses prometheus-k8s directly because
+    # Thanos Query does not implement /federate (scrape failed in 7ms with up=0).
+    alloy_thanos_url: "https://prometheus-k8s.openshift-monitoring.svc:9091"
 
-    # AAP controller metrics endpoint — try the controller service first.
-    alloy_aap_metrics_host: "aap-controller-service.aap.svc"
+    # AAP controller metrics endpoint — must go through the gateway on AAP 2.7.
+    # The controller service returns 401 (auth routes through the gateway).
+    # The gateway's envoy on port 80 requires HTTP/1.1+ (a raw HTTP/1.0 test
+    # returns 426 Upgrade Required, but a real HTTP client works).
+    alloy_aap_metrics_host: "aap.aap.svc"
     alloy_aap_metrics_port: "80"
 
     # Log collection namespaces.
@@ -238,7 +242,7 @@
                 name: "{{ alloy_cluster_role }}"
               rules:
                 - apiGroups: [""]
-                  resources: ["nodes", "nodes/metrics", "pods", "services", "endpoints", "namespaces"]
+                  resources: ["nodes", "nodes/metrics", "pods", "pods/log", "services", "endpoints", "namespaces"]
                   verbs: ["get", "list", "watch"]
                 - apiGroups: ["networking.k8s.io"]
                   resources: ["ingresses"]
@@ -424,12 +428,15 @@
                   }
 
                   // --- 2. AAP controller metrics via basic auth ------------------------
+                  // On AAP 2.7 the controller API requires Bearer auth directly, but
+                  // the gateway accepts basic auth and proxies to the controller under
+                  // /api/controller/. The direct /api/v2/ path returns 404 on the gateway.
                   prometheus.scrape "aap_controller" {
                     targets = [{
                       __address__ = "{{ alloy_aap_metrics_host }}:{{ alloy_aap_metrics_port }}",
                     }]
 
-                    metrics_path = "/api/v2/metrics/"
+                    metrics_path = "/api/controller/v2/metrics/"
 
                     basic_auth {
                       username = env("AAP_USERNAME")
