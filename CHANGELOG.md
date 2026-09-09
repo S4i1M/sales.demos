@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- roadmap environment and memory references (#410)
+
+- **`ROADMAP.md` now documents all three live environments:** `sandbox` and
+  `demo` are RHDP clusters, while `edge` is a persistent bare-metal SNO on a
+  NUC.
+- **Updated the documented memory budgets:** 63 GiB for the RHDP environments
+  and 50 GiB for `edge`.
+
+### Added -- edge/SNO demo docs (in-repo mirror) (#404)
+
+
 ### Fixed -- the portal launcher sent `vm_count` as a string and AAP refused it (#400)
 
 - **`Self-Service - Request Linux/Windows Server` could not launch anything.**
